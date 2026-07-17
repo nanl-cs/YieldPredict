@@ -1,209 +1,87 @@
-# 项目进展评估：冬小麦产量预测研究
+﻿# 冬小麦产量预测 — 多源数据回归项目
 
-## 一、项目概述
+## 目录结构
 
-| 项目属性 | 详情 |
-|---------|------|
-| 研究对象 | 冬小麦 (Winter Wheat) 产量预测 |
-| 研究区域 | 5个学术分区 (Zone 1-5) |
-| 时间跨度 | 2016-2021 (6年) |
-| 数据规模 | 约119,385条样本 |
-| 特征维度 | 100个特征 (P4阶段全部展开) |
-| 目标变量 | Yield (均值 6157.3, 标准差 927.5) |
-| 数据来源 | 遥感(RS)、气象(Meteorology)、土壤(Static) 多源数据 |
+```
+xgb/
+│
+├── data/                          ← 所有输入数据
+│   ├── raw/                       ← 原始多源数据（按 Zone × 年份存放）
+│   │   └── zone{1..5}/Academic_Zone*_*.csv
+│   ├── merged/                    ← 逐年合并数据（01拼数据步骤产物）
+│   │   └── Merged_Features_2016~2021.csv
+│   ├── P4_Cleaned_Dataset.csv     ← 最终清洗数据集（100维特征，213MB，Git LFS 追踪）
+│   └── 物候期具体时间.xlsx          ← 辅助参考文件
+│
+├── code_dataset/                  ← 实验 Notebook（主要工作区）
+│   ├── evaluate_performance.ipynb     ← MOBO 训练（XGBRF + Optuna 双目标优化）
+│   ├── model_comparison.ipynb         ← 多模型对比（MLR / SVR / XGBoost / RF+MOBO）
+│   ├── optuna_MOBO.ipynb             ← MOBO 实验历史版本
+│   ├── shap_explanation_and_export.ipynb ← SHAP 分析（全局模型 + 矩阵导出）
+│   ├── 消融.ipynb                     ← 消融实验（Static/气象/RS 特征组）
+│   ├── run_ablation.py               ← 消融实验快捷执行脚本
+│   └── shap/
+│       └── plot_dependence.ipynb    ← SHAP 偏依赖图
+│
+├── results/                       ← 所有实验输出
+│   ├── mobo/                     ← MOBO 训练结果（P4_Nested_*.csv）
+│   ├── comparison/                ← 模型对比汇总表
+│   ├── ablation/                  ← 消融实验指标与图表
+│   └── shap/                      ← SHAP 矩阵与可视化（大矩阵被 .gitignore 排除）
+│
+├── pre_done/                      ← [归档] 原始流水线（00~06 按编号排列）
+│   ├── 00分区对齐.js
+│   ├── 01拼数据+数据处理.ipynb       ← 从 origin/ → merged_dataset/ + 特征工程
+│   ├── 02P1.ipynb                  ← P1~P5 各阶段独立训练
+│   ├── 03减少静态.ipynb             ← 静态特征筛选
+│   ├── 04_01_prepare_P4_data.ipynb  ← 最终数据集整理
+│   ├── 05_evaluate_performance.ipynb ← 原始版 MOBO 训练
+│   └── 06_shap_explanation_and_export.ipynb ← 原始版 SHAP 分析
+│
+├── paper/                         ← 参考论文（Git 不追踪）
+├── main.py                        ← 占位入口
+├── pyproject.toml / uv.lock       ← Python 依赖（uv 管理）
+└── project_review.md              ← 本文件
+```
 
-## 二、数据处理流程
+## 数据流水线
 
-### 2.1 原始数据 (origin/)
-- 5个分区 × 6年 = 区域化原始数据，含78列原始特征
-- 包括：经纬度、高程/坡度/坡向、土壤(Sand/Clay/BD/pH/SOC)、各生育期(P1-P5)的EVI/EVI_max/FDD/GDD/NDVI/NDVI_max/NDWI/NIRv/PPT/SM/Tmean/VPD/VPD_max
+```
+origin/zone*/Academic_Zone*_*.csv   (原始数据)
+  │
+  ├── 00分区对齐.js → 坐标对齐
+  └── 01拼数据+数据处理 → merged_dataset/ (逐年合并)
+                       → engineered_features/ (缺失，需重跑01生成)
+  │
+  ├── 02P1 → 各阶段独立 RF 训练（确定最优阶段=P4）
+  ├── 03减少静态 → XGBRF 渐进训练（剔除冗余静态特征）
+  └── 04_prepare_P4_data → P4_Cleaned_Dataset.csv (最终数据)
+  │
+  ▼
+P4_Cleaned_Dataset.csv  ──→  05_MOBO训练 (code_dataset/evaluate_performance)
+                         ├─→  06_模型对比 (code_dataset/model_comparison)
+                         ├─→  07_消融实验 (code_dataset/消融)
+                         └─→  08_SHAP分析 (code_dataset/shap_explanation_and_export)
+```
 
-### 2.2 数据拼接与特征工程 (pre_done/)
-- **01 数据拼接**：按年份合并5个zone数据 → merged_dataset/
-- **02 特征工程**：在逐期特征基础上，构造衍生特征：
-  - 水量利用效率 (WUE = NIRv/SM)
-  - 解耦胁迫 (Decoupling Stress)
-  - 热效率 (Thermal Efficiency)
-  - 水热平衡 (Hydrothermal Balance)
-  - 干旱脆弱性 (Drought Vulnerability)
-  - 肥力活力 (Fertility Vigor)
-  - 累积特征 (Cum_PPT/FDD/VPD)
-  - 变化量特征 (Delta_NDVI/NDWI/SM)
-- **03 特征精简**：剔除累积GDD等，保100个有效特征
-- **04 数据集导出**：生成 P4_Cleaned_Dataset.csv (119,385行 × 105列)
+## 运行方式
 
-## 三、已完成实验
+所有 notebook 从 `code_dataset/` 目录打开，数据路径已配置为 `../data/P4_Cleaned_Dataset.csv`。
 
-### 3.1 消融实验 (code_dataset/消融.ipynb)
-**实验目的**：验证不同数据源、不同生育期组合对预测精度的贡献
+执行顺序：05_MOBO → 06_模型对比 / 07_消融实验 → 08_SHAP分析（消融实验可独立运行）。
 
-**实验设计**：
-- **模型**：RandomForestRegressor（固定参数，不调参）
-- **验证策略**：Leave-One-Year-Out (LOYO)
-- **特征分组**：Static (土壤) / Meteorology (气象) / RS (遥感) / All (全组合)
-- **阶段累积**：P1 → P2 → P3 → P4
+## 技术栈
 
-**实验结果（P1-P4 All 组汇总）**：
+- Python 3.10+
+- XGBoost (XGBRFRegressor, GPU 加速)
+- Optuna (TPESampler, 多目标贝叶斯优化)
+- SHAP (TreeExplainer)
+- Scikit-learn (MLR, SVR, RF baseline)
+- CuPy (GPU 矩阵运算)
+- uv (Python 依赖管理)
 
-| 阶段 | 特征数 | R² | RRMSE(%) | MAE | MAPE(%) | WILLMOTT d-index |
-|------|--------|-----|----------|------|----------|-------------------|
-| P1   | 25 | 0.201 | 13.26 | 626 | 10.69 | 0.644 |
-| P2   | 50 | 0.223 | 13.08 | 605 | 10.40 | 0.653 |
-| P3   | 75 | 0.271 | 12.69 | 576 | 9.95 | 0.677 |
-| P4   | 100 | 0.297 | 12.45 | 553 | 9.67 | 0.704 |
+## Git 注意事项
 
-**分析**：
-- ✅ 随生育期推进（P1→P4），预测精度单调提升：R²从0.201升至0.297，MAPE从10.69%降至9.67%
-- ✅ 多源数据融合（All）始终优于单一数据源
-- ✅ Willmott一致性指数达到0.70，属acceptable-good范围
-- ⚠️ R²偏低（整体R²<0.3），说明产量方差中仍有较大比例未被模型解释。但这在作物产量预测领域属于常见水平
-
-### 3.2 模型对比实验 (code_dataset/model_comparison.ipynb)
-**实验目的**：比较不同ML模型在多源数据融合场景下的预测性能
-
-**实验设计**：
-- **模型**：MLR (多元线性回归)、SVR、XGBoost、RF+MOBO
-- **优化方法**：Optuna MOBO (多目标贝叶斯优化) — 同时优化MAE和特征数
-- **验证策略**：Nested LOYO (外循环按年分组，内循环GridSearch/特征选择)
-
-**实验结果**：
-
-| 模型 | R² | RRMSE(%) | MAPE(%) | MAE | WILLMOTT d-index |
-|------|-----|----------|----------|------|-------------------|
-| RF+MOBO | 0.345 | 12.19 | 9.44 | 534 | 0.717 |
-| SVR | 0.342 | 12.22 | 9.40 | 536 | 0.700 |
-| XGBoost | 0.314 | 12.48 | 9.63 | 552 | 0.714 |
-| MLR | 0.109 | 14.22 | 11.20 | 658 | 0.674 |
-
-**分析**：
-- ✅ RF+MOBO和SVR表现相近，均优于XGBoost和MLR
-- ✅ 非线性模型（RF/SVR/XGBoost）显著优于线性基准（MLR），证明产量-特征间存在复杂非线性关系
-- ✅ MOBO特征选择有效：RF模型选用约42个特征即可达到最优，无需全部100个特征
-- ⚠️ 模型间差异不大，最优R²仅0.345，暴露了产量预测的固有难度
-- ⚠️ 年际波动大：2018年R²可达0.46，而2017年仅0.24，暗示存在难以建模的年份特异性因素
-
-### 3.3 SHAP可解释性分析 (code_dataset/shap_explanation_and_export.ipynb)
-**已完成产出**：
-- ✅ SHAP Summary Dot Plot：全局特征重要性排序
-- ✅ SHAP Importance Bar：特征重要性条形图
-- ✅ SHAP Dependence Plot：Cum_VPD_P4、P1_GDD、P4_NDWI、P4_WUE四个关键特征的依赖关系图
-- ✅ SHAP特征矩阵 (206 MB)和SHAP值矩阵 (120 MB)已导出，可用于后续深入分析
-
-**分析**：
-- ✅ SHAP分析为"黑箱"模型提供了可解释性，这在农学期刊中几乎是必备内容
-- ⚠️ 目前仅分析了全局平均效应，缺少：空间异质性分析、年份依赖性分析、特征交互效应分析
-
-## 四、论文参考（paper/文件夹）
-
-基于您收集的12篇论文标题分析，当前领域研究方向和标准：
-
-### 4.1 研究方向
-- 多源数据融合（遥感+气象+土壤）是主流范式
-- 机器学习/深度学习方法（XGBoost/RF/LSTM/CNN）
-- 时空深度学习（Spatio-temporal deep learning）
-- 物候信息整合（Phenology information）
-- 可解释性（SHAP, interpretable ML）
-- 迁移学习（Transfer learning, cross-scale prediction）
-
-### 4.2 领域标准
-- 大多数论文使用Leave-One-Year-Out验证
-- 评价指标以R²、RMSE、RRMSE、MAE、MAPE为主
-- 比较多个模型（RF、XGBoost、SVR、深度学习模型）
-- SHAP/LIME可解释性分析已成标配
-- 研究区面积、数据年份跨度、样本量是审稿人关注要点
-
-### 4.3 您的优势
-- 数据量大（~119K），超过许多已发表论文
-- 多源数据融合（3大类数据源×5个生育期）
-- 特征工程有创新性（WUE、Decoupling Stress等生态生理衍生特征）
-- MOBO特征选择+消融实验设计的组合在文献中不常见
-- SHAP可解释性已基本完成
-
-## 五、现状总结：现有实验能否支撑论文发表？
-
-### 5.1 可以发表的目标刊物层次
-| 层次 | 刊物类型 | 可行性 | 说明 |
-|------|---------|--------|------|
-| Tier 1 | 农林科学顶刊 (Field Crops Research等) | ❌ 较难 | 需要更深的理论创新或更前沿的方法 |
-| Tier 2 | SCI二区 (Computers and Electronics in Agriculture 等) | ⚠️ 需补充 | 现有实验基本够用，但需增强对比和讨论 |
-| Tier 3 | SCI三四区 / EI期刊 | ✅ 可行 | 补充部分实验后即可投稿 |
-| Tier 4 | 中文核心 (中国农业科学等) | ✅ 可行 | 当前实验量已达标 |
-
-### 5.2 当前优势
-1. **数据规模**：119K样本，超过多数已发表研究
-2. **验证严谨**：LOYO + Nested CV，双重保障
-3. **优化创新**：MOBO联合优化MAE和特征数，在作物产量预测中较少见
-4. **可解释性**：SHAP分析完整，满足审稿需求
-5. **实验设计**：消融实验+模型对比+特征重要性，形成完整证据链
-6. **特征工程**：物候驱动的衍生特征（Decoupling Stress等）有生态学理论支撑
-
-### 5.3 当前不足
-1. **缺乏与文献基准比较**：未有与已发表方法的定量对比
-2. **深度学习缺失**：未涉及LSTM/CNN/Transformer等，而多项参考论文使用了深度学习方法
-3. **空间分析不足**：仅使用LOYO（时间外推），缺乏Leave-One-Zone-Out（空间外推）
-4. **不确定性量化**：无置信区间/bootstrap分析
-5. **特征工程深度**：相比部分论文，缺乏物候期精确匹配、作物模型同化等
-6. **讨论不够充分**：对特征重要性、失败年份、空间差异等讨论尚未展开
-7. **SHAP分析深度**：缺少空间异质性和年际差异分析
-8. **图形和可视化**：论文级别的图表（精美、统一风格、高分辨率）尚未制作
-
-## 六、待完成工作清单
-
-### 6.1 高优先级（支撑论文发表）
-
-| # | 任务 | 说明 | 预计工作量 |
-|---|------|------|-----------|
-| 1 | **写论文初稿** | Introduction + Methods + Results + Discussion框架 | 1-2周 |
-| 2 | **补充空间验证** | Leave-One-Zone-Out实验，证明模型空间外推能力 | 0.5天（代码） |
-| 3 | **增强SHAP分析** | (a) 按年份/区域分解SHAP贡献 (b) 特征交互SHAP依赖图 | 1-2天 |
-| 4 | **不确定性量化** | 对最优模型做bootstrap置信区间 | 0.5天 |
-| 5 | **文献对比表** | 整理已有文献指标，与本研究结果横向比较 | 0.5天 |
-| 6 | **图表美化** | 统一图表风格，制作发表级别的Figure | 1-2天 |
-
-### 6.2 中优先级（提升论文竞争力）
-
-| # | 任务 | 说明 | 预计工作量 |
-|---|------|------|-----------|
-| 7 | **增加对比模型** | 可选：Ridge/Lasso回归、LightGBM、KNN baseline等 | 1天 |
-| 8 | **特征时间动态分析** | 分析关键特征在不同生育期的预测能力变化曲线 | 0.5天 |
-| 9 | **年际异常分析** | 深入分析2017年等低精度年份的原因（气候异常？） | 1天 |
-| 10 | **残留分析** | 残差空间分布图(Mapping residuals)，识别空间系统误差 | 0.5天 |
-
-### 6.3 低优先级（增强论文深度）
-
-| # | 任务 | 说明 | 预计工作量 |
-|---|------|------|-----------|
-| 11 | **深度学习模型** | LSTM时间序列预测 或 CNN+气象网格 | 1-2周 |
-| 12 | **Early-season预测** | 分别用P1/P2/P3早期数据进行预测试验 | 1天 |
-| 13 | **集合预测** | 多模型加权平均，检验是否优于单模型 | 0.5天 |
-| 14 | **物候分析** | 利用物候期具体时间.xlsx，分析特征与物候匹配度的影响 | 1-2天 |
-
-## 七、投稿策略建议
-
-### 路线A：快速发表（推荐）
-- **目标**：SCI三区/四区 或 中文核心期刊
-- **策略**：完成高优先级任务1-6，立即撰写投稿
-- **预计时间**：2-4周
-- **潜在刊物**：
-  - 英文：Agronomy, Agriculture, Remote Sensing (MDPI系列)
-  - 中文：中国农业科学、农业工程学报
-
-### 路线B：冲刺好刊
-- **目标**：SCI二区（Computers and Electronics in Agriculture等）
-- **策略**：完成高+中优先级任务，加入深度学习模型，强化创新点
-- **预计时间**：1-2个月
-- **潜在刊物**：Computers and Electronics in Agriculture, European Journal of Agronomy, Precision Agriculture
-
-### 建议
-考虑到当前实验基础比较扎实，建议采用路线A快速发表第一篇，积累经验后再向更高层次刊物冲击。同时，**写论文是最紧迫的任务**，因为目前的代码实验已经相当充分，主要的瓶颈在写作和表达上。
-
-## 八、关键风险提示
-
-1. **产量预测固有天花板**：R²在0.3左右是许多产量预测研究的典型水平，这不是实验失败，而是由产量形成的复杂性决定的。需要在论文中充分讨论这一限制。
-2. **年份数有限**：6年数据在时间序列方法中偏少，LOYO验证中每年都是独立测试，个别年份差会拉低整体指标。
-3. **缺少实测产量**：数据似乎来自学术分区（Academic Zone），需要确认产量数据来源的可信度和分辨率。
-4. **方法创新性**：RF+XGBoost+SVR是成熟方法，审稿人可能质疑创新性。需要通过MOBO+消融实验的组合来强调方法学贡献。
-
----
-
-*生成时间：2026-07-17 | 基于项目 D:\uv_py\xgb 的完整代码和数据分析*
+- `P4_Cleaned_Dataset.csv` 使用 Git LFS 追踪
+- SHAP 大矩阵（SHAP_Feature_Matrix.csv, SHAP_Values_Matrix.csv）被 .gitignore 排除
+- `.venv/` 和 `paper/` 不上传
