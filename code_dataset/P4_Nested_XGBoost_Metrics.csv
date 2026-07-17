@@ -1,0 +1,8 @@
+Test_Year,Used_Features,R2,RRMSE(%),d-index,MAPE(%),RMSE,MAE,Best_Params
+2016,53,0.176,13.885,0.679,9.316,861.807,563.145,"{'max_depth': 6, 'learning_rate': 0.03, 'subsample': 0.9318, 'colsample_bytree': 0.5149, 'n_estimators': 250}"
+2017,43,0.078,14.662,0.613,12.472,931.919,751.775,"{'max_depth': 4, 'learning_rate': 0.1765, 'subsample': 0.7889, 'colsample_bytree': 0.5833, 'n_estimators': 50}"
+2018,34,0.418,12.033,0.746,9.5,723.168,529.856,"{'max_depth': 7, 'learning_rate': 0.0676, 'subsample': 0.9508, 'colsample_bytree': 0.3733, 'n_estimators': 300}"
+2019,43,0.371,12.414,0.68,9.53,767.864,532.101,"{'max_depth': 3, 'learning_rate': 0.0329, 'subsample': 0.8672, 'colsample_bytree': 0.3949, 'n_estimators': 250}"
+2020,42,0.357,10.307,0.779,8.378,629.414,461.473,"{'max_depth': 5, 'learning_rate': 0.02, 'subsample': 0.6027, 'colsample_bytree': 0.8128, 'n_estimators': 300}"
+2021,44,0.466,10.703,0.803,8.581,650.653,473.297,"{'max_depth': 7, 'learning_rate': 0.0647, 'subsample': 0.8267, 'colsample_bytree': 0.604, 'n_estimators': 200}"
+Overall_Pooled,N/A,0.314,12.48,0.714,9.629,768.4,551.913,N/A
