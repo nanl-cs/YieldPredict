@@ -1,0 +1,5 @@
+R2,RMSE,RRMSE(%),MAE,MAPE(%),d-index,test_year,feature_group,n_features
+0.323,763.403,12.398,543.337,9.529,0.706,Overall,raw,55
+0.296,778.477,12.643,558.664,9.801,0.692,Overall,raw_cum_delta,76
+0.297,777.62,12.629,553.256,9.74,0.693,Overall,full,100
+0.286,783.879,12.731,562.185,9.836,0.692,Overall,full_all_ratio,80
