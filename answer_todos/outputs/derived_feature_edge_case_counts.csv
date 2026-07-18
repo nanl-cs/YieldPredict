@@ -1,0 +1,18 @@
+condition,stage,n_samples,pct_total
+SM < 0.01,P1,1,0.0
+SM < 0.02,P1,24,0.02
+SM < 0.01,P2,0,0.0
+SM < 0.02,P2,0,0.0
+SM < 0.01,P3,0,0.0
+SM < 0.02,P3,11,0.01
+SM < 0.01,P4,6,0.01
+SM < 0.02,P4,18,0.02
+Tmean <= 0,P1,5,0.0
+Tmean <= 0,P2,23031,19.29
+Tmean <= 0,P3,16,0.01
+Tmean <= 0,P4,5,0.0
+Clay range (used in Drought_Vulnerability),All,119385,100.0
+p99/p50 ratio > 10,P2_Hydrothermal_Balance,29,684.41
+p99/p50 ratio > 10,Cum_FDD_P2,14,570.78
+p99/p50 ratio > 10,Cum_FDD_P3,14,588.24
+p99/p50 ratio > 10,Cum_FDD_P4,14,588.74
