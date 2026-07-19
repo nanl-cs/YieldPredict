@@ -1,0 +1,1 @@
+Expected Value (Baseline Yield): 6157.25732421875
